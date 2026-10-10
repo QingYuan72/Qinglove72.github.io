@@ -435,6 +435,7 @@ body.bs-note .bubble:not(.sticker){border-radius:3px;box-shadow:2px 3px 0 rgba(0
 #page-settings .block.folded>*:not(.block-title){display:none}
 #page-settings .block.folded .block-title{margin-bottom:0}
 .msg-row.old{animation:none}
+.load-more{text-align:center;color:#b8a0ab;font-size:12px;padding:10px;cursor:pointer}
 </style>
 </head>
 <body>
@@ -768,7 +769,7 @@ let activeCall=null;
 let currentMomentReply=null;
 let cardSearchKey='',statusSearchKey='';
 let callTimerHandle=null,callSec=0;
-let renderQueue=Promise.resolve();let renderedMaxId=0;
+let renderQueue=Promise.resolve();let renderedMaxId=0;let renderLimit=100;
 let expandedGroups={card:new Set(),status:new Set()};
 let dndAutoTimer=null;
 let calMonth=new Date();calMonth.setDate(1);
@@ -826,6 +827,12 @@ function bindSettingsFold(){
     t.parentElement.classList.toggle('folded');
   });
 }
+document.addEventListener('click',e=>{
+  if(!e.target.closest('#loadMore'))return;
+  const l=$('#chatList');const prev=l.scrollHeight;
+  renderLimit+=100;
+  renderMessages().then(()=>{l.scrollTop=l.scrollHeight-prev;});
+});
 function renderCssPresets(){
   const list=settings.cssPresets||[];
   $('#cssPresetList').innerHTML=list.length?list.map((p,i)=>`<div class="row" style="margin-bottom:6px"><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.name)}</span><button class="btn ghost sm" data-pa="${i}">应用</button><button class="btn ghost sm" data-pd="${i}">删除</button></div>`).join(''):'<div class="muted">还没有预设</div>';
@@ -875,7 +882,8 @@ function clearStatusCardTimers(){statusCardTimers.forEach(t=>clearInterval(t));s
 function showTyping(){if(!settings.typingIndicator)return;const list=$('#chatList');if(!list)return;if($('#typingBubble'))return;const row=document.createElement('div');row.className='typing-row';row.id='typingBubble';row.innerHTML=`<img class="avatar msg-av" src="${profile.other.avatar}" data-shape="${profile.other.avatarShape||'circle'}"><div class="typing-bubble">对方正在输入<div class="dots"><span></span><span></span><span></span></div></div>`;list.appendChild(row);list.scrollTop=list.scrollHeight;}
 function hideTyping(){const b=$('#typingBubble');if(b)b.remove();}
 async function renderMessages(){renderQueue=renderQueue.then(_renderMessages);return renderQueue;}
-async function _renderMessages(){const list=$('#chatList');const msgs=(await getAll('messages')).sort((a,b)=>a.timestamp-b.timestamp);const typing=$('#typingBubble');const html=[];let lastDay='',prevSender=null;for(const m of msgs){const dayKey=new Date(m.timestamp).toDateString();if(dayKey!==lastDay){html.push(`<div class="day-sep">${fmtDay(m.timestamp)}</div>`);lastDay=dayKey;prevSender=null;}if(m.sender==='system'&&m.type==='read-marker'){html.push(`<div class="read-mark"><i data-lucide="check-check"></i>${esc(m.content||'对方已读不回')}</div>`);prevSender=null;continue;}if(m.sender==='system'){const clickable=m.letterId?`data-letter="${m.letterId}"`:'';html.push(`<div class="msg-row system${m.id<=renderedMaxId?' old':''}">
+async function _renderMessages(){const list=$('#chatList');const msgs=(await getAll('messages')).sort((a,b)=>a.timestamp-b.timestamp);const typing=$('#typingBubble');const html=[];if(msgs.length>renderLimit)html.push('<div class="load-more" id="loadMore">点击加载更早的消息</div>');let lastDay='',prevSender=null;for(const m of msgs.slice(-renderLimit)){const dayKey
+=new Date(m.timestamp).toDateString();if(dayKey!==lastDay){html.push(`<div class="day-sep">${fmtDay(m.timestamp)}</div>`);lastDay=dayKey;prevSender=null;}if(m.sender==='system'&&m.type==='read-marker'){html.push(`<div class="read-mark"><i data-lucide="check-check"></i>${esc(m.content||'对方已读不回')}</div>`);prevSender=null;continue;}if(m.sender==='system'){const clickable=m.letterId?`data-letter="${m.letterId}"`:'';html.push(`<div class="msg-row system${m.id<=renderedMaxId?' old':''}">
 <div class="sys-msg" ${clickable}>${esc(m.content)}</div></div>`);prevSender=null;continue;}const me=m.sender==='me';const p=me?profile.me:profile.other;const first=prevSender!==m.sender;prevSender=m.sender;let inner='';if(m.type==='sticker'){const src=m.blob?blobUrl(m.blob,'m'+m.id):(m.url||'');inner=`<div class="bubble sticker"><img src="${src}" alt=""></div>`;}else{const tag=m.auto?'<div class="auto-tag">自动回复</div>':'';const recalledTag=m.recalled?'<span class="recall-tag">已撤回</span>':'';const badge=(me&&settings.readReceipt&&m.read)?`<span class="read-badge">${CHECK_SVG}</span>`:'';const cls='bubble'+(m.recalled?' recalled':'');inner=`<div class="${cls}">${tag}${esc(m.content||'')}${recalledTag}${badge}</div>`;}const quote=m.quote?`<div class="msg-quote">${QUOTE_SVG}<span>${esc(m.quote.name)}：${esc(m.quote.content)}</span></div>`:'';const av=first?`<img class="avatar msg-av" src="${p.avatar}" data-shape="${p.avatarShape||'circle'}" data-role="${me?'me':'other'}" alt="">`:'';html.push(`<div class="msg-row ${me?'me':'other'}${m.id<=renderedMaxId?' old':''}" data-id="${m.id}">
 ${av}<div class="msg-body">${inner}${quote}<div class="msg-meta">${shortTime(m.timestamp)}</div></div></div>`);}list.innerHTML=html.join('')||'<div class="empty">还没有消息<br>点左下角声波按钮让对方先开口</div>';if(typing)list.appendChild(typing);list.scrollTop=list.scrollHeight;renderedMaxId=msgs.reduce((a,x)=>Math.max(a,x.id||0),0);
 list.querySelectorAll('.msg-row[data-id]').forEach(row=>{const id=Number(row.dataset.id);const bubble=row.querySelector('.bubble');if(bubble)bindLongPress(bubble,()=>openMsgMenu(id));const av=row.querySelector('.avatar[data-role="other"]');if(av)bindOtherAvatarTap(av);});list.querySelectorAll('.sys-msg[data-letter]').forEach(el=>{el.onclick=async()=>{const l=await getOne('letters',Number(el.dataset.letter));if(l)readLetter(l);};});icons();}
