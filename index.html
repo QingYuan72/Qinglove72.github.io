@@ -960,7 +960,7 @@ async function runMomentTick(){
     if(autoCanRun() && !isDndOn()){
       const moments = await getAll('moments');
       // 优先处理：我评论过的动态，对方是否回复（30% 概率）
-      const pendingReply = moments.find(m => m.author !== 'other' && !m.otherReplied && m.myCommentPending);
+      const pendingReply = moments.find(m => !m.otherReplied && m.myCommentPending);
       if(pendingReply && Math.random() < PROB.commentReply){
         const text2 = await pickMomentText();
         if(text2){
