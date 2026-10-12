@@ -141,6 +141,10 @@ select{appearance:none;background-image:url("data:image/svg+xml;utf8,<svg xmlns=
 .tree-group.open .tree-head .caret{transform:rotate(90deg)}
 .tree-head .gname{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .tree-head .gcount{font-size:11px;color:#9a9aa2;background:rgba(0,0,0,.05);padding:1px 7px;border-radius:6px;font-weight:500}
+.tree-head{-webkit-user-select:none;user-select:none}
+.tree-head .g-edit{flex:0 0 auto;color:#b0b0b8;width:26px;height:26px}
+.tree-head .g-edit svg{width:14px;height:14px}
+.tree-head .g-edit:active{background:rgba(0,0,0,.05)}
 .tree-head .gblock{font-size:10px;color:#c04a6e;background:#f8e8ec;padding:1px 7px;border-radius:6px;font-weight:500}
 .tree-body{display:none;padding:4px 0 8px}
 .tree-group.open .tree-body{display:block}
@@ -1047,23 +1051,173 @@ async function renderCardPage(){await fillGroupSelects();await renderCardsTree()
 async function fillGroupSelects(){const cardGroups=await allCardGroups();const cardSel=$('#cardGroupSel');if(cardSel){const cur=cardSel.value;cardSel.innerHTML=cardGroups.map(g=>`<option value="${esc(g)}">${esc(g)}</option>`).join('');if(cardGroups.includes(cur))cardSel.value=cur;else if(cardGroups.length)cardSel.value=cardGroups[0];}const statusGroups=await allStatusGroups();const statusSel=$('#statusGroupSel');if(statusSel){const cur=statusSel.value;statusSel.innerHTML='<option value="">（无分组）</option>'+statusGroups.map(g=>`<option value="${esc(g)}">${esc(g)}</option>`).join('');if(statusGroups.includes(cur)||cur==='')statusSel.value=cur;else statusSel.value='';}}
 async function allCardGroups(){const cards=await getAll('cards');const set=new Set([...groupStore.card,...cards.map(c=>c.group||'默认')].filter(Boolean));return Array.from(set);}
 async function allStatusGroups(){const pool=await getAll('replyPool');const set=new Set(groupStore.status);pool.forEach(r=>{if(r.group)set.add(r.group);});return Array.from(set).filter(Boolean);}
-async function renderCardsTree(){const groups=await allCardGroups();const blocked=groupStore.blockedCard||[];const allCards=await getAll('cards');const searchKey=cardSearchKey;const el=$('#cardTree');if(!groups.length){el.innerHTML='<div class="tree-empty">还没有分组</div>';return;}const html=groups.map(g=>{let items=allCards.filter(c=>(c.group||'默认')===g);if(searchKey)items=items.filter(c=>(c.text||'').toLowerCase().includes(searchKey));items.sort((a,b)=>b.timestamp-a.timestamp);const isBlocked=blocked.includes(g);const open=expandedGroups.card.has(g)||(searchKey&&items.length>0);if(searchKey&&!items.length)return'';const count=items.length;const bodyHtml=items.length?items.map(c=>{const itemBlocked=!!c.blocked;const cls=`tree-item ${batchMode?'selecting':''} ${pickedCards.has(c.id)?'picked':''} ${itemBlocked?'blocked':''}`;const chk=batchMode?`<div class="card-check">${pickedCards.has(c.id)?'<i data-lucide="check"></i>':''}</div>`:'';const blockMark=itemBlocked?'<span class="block-mark">已屏蔽</span>':'';if(c.blob)return`<div class="${cls}" data-card="${c.id}">${chk}<img class="cr-thumb" src="${blobUrl(c.blob,'cd'+c.id)}" alt=""><div class="cr-text">图片字卡</div>${blockMark}</div>`;return`<div class="${cls}" data-card="${c.id}">${chk}<div class="cr-text">${esc(c.text||'')}</div>${blockMark}</div>`;}).join(''):'<div class="tree-empty">该分组暂无字卡</div>';return`<div class="tree-group ${open?'open':''}" data-group-name="${esc(g)}"><div class="tree-head"><i data-lucide="chevron-right" class="caret"></i><span class="gname">${esc(g)}</span>${isBlocked?'<span class="gblock">已屏蔽</span>':''}<span class="gcount">${count}</span></div><div class="tree-body">${bodyHtml}</div></div>`;}).join('');el.innerHTML=html||'<div class="tree-empty">没有匹配的字卡</div>';icons();el.querySelectorAll('.tree-head').forEach(head=>{head.onclick=()=>{const group=head.parentElement.dataset.groupName;if(expandedGroups.card.has(group))expandedGroups.card.delete(group);else expandedGroups.card.add(group);head.parentElement.classList.toggle('open');};let lpTimer=null;head.addEventListener('pointerdown',()=>{lpTimer=setTimeout(()=>{lpTimer=null;const g=head.parentElement.dataset.groupName;const isBlocked=blocked.includes(g);showSheet([
-          {icon:'edit-3',label:'重命名分组',fn:()=>{showInputDialog({title:'重命名分组',placeholder:'输入新名称',defaultValue:g,onSave:async newName=>{if(!newName||newName===g)return;if(groupStore.card.includes(newName)){toast('该分组已存在');return;}const idx=groupStore.card.indexOf(g);if(idx>=0)groupStore.card[idx]=newName;else groupStore.card.push(newName);const cards=await getAll('cards');for(const c of cards){if((c.group||'默认')===g){c.group=newName;await put('cards',c);}}if(expandedGroups.card.has(g)){expandedGroups.card.delete(g);expandedGroups.card.add(newName);}await saveGroups();renderCardPage();toast('已重命名');}});}},
-          {icon:'trash-2',label:`删除分组「${g}」（字卡归入默认）`,danger:true,fn:async()=>{if(!confirm(`删除分组「${g}」？字卡将归入默认分组。`))return;groupStore.card=groupStore.card.filter(x=>x!==g);groupStore.blockedCard=(groupStore.blockedCard||[]).filter(x=>x!==g);const cards=await getAll('cards');for(const c of cards){if((c.group||'默认')===g){c.group='默认';await put('cards',c);}}await saveGroups();renderCardPage();}},
-          {icon:isBlocked?'eye':'eye-off',label:isBlocked?'取消屏蔽':'屏蔽该分组',fn:async()=>{const arr=groupStore.blockedCard||[];if(arr.includes(g))groupStore.blockedCard=arr.filter(x=>x!==g);else groupStore.blockedCard=[...arr,g];await saveGroups();renderCardPage();}}
-        ]);},620);});const clearLp=()=>{if(lpTimer){clearTimeout(lpTimer);lpTimer=null;}};head.addEventListener('pointerup',clearLp);head.addEventListener('pointercancel',clearLp);head.addEventListener('pointerleave',clearLp);head.addEventListener('pointermove',clearLp);});el.querySelectorAll('[data-card]').forEach(item=>{item.onclick=async e=>{e.stopPropagation();const id=Number(item.dataset.card);if(batchMode){if(pickedCards.has(id))pickedCards.delete(id);else pickedCards.add(id);renderCardsTree();return;}const c=await getOne('cards',id);showSheet([
-        {icon:'edit-3',label:'修改内容',fn:()=>{showInputDialog({title:'修改字卡内容',placeholder:'输入新内容',defaultValue:c.text||'',maxLength:200,onSave:async v=>{if(!v)return;c.text=v;c.timestamp=c.timestamp||Date.now();await put('cards',c);renderCardPage();toast('已保存');}});}},
-        {icon:'folder',label:'移动到分组…',fn:()=>moveCardTo(c)},
-        {icon:'send',label:'发送到聊天',fn:()=>sendCard(c)},
-        {icon:c.blocked?'eye':'eye-off',label:c.blocked?'取消屏蔽':'屏蔽',fn:async()=>{c.blocked=!c.blocked;await put('cards',c);renderCardsTree();}},
-        {icon:'copy',label:'复制文字',fn:()=>{if(c.text){navigator.clipboard?.writeText(c.text);toast('已复制');}}},
-        {icon:'trash-2',label:'删除',danger:true,fn:async()=>{await delOne('cards',id);renderCardPage();}}
-      ]);};});updateBatchBar();}
-async function renderStatusTree(){const groups=await allStatusGroups();const blocked=groupStore.blockedStatus||[];const allPool=await getAll('replyPool');const searchKey=statusSearchKey;const el=$('#statusTree');if(!groups.length){el.innerHTML='<div class="tree-empty">还没有分组</div>';return;}const html=groups.map(g=>{let items=allPool.filter(r=>(r.group||'')===g);if(searchKey)items=items.filter(r=>(r.content||'').toLowerCase().includes(searchKey));items.sort((a,b)=>(b.id||0)-(a.id||0));const isBlocked=blocked.includes(g);const open=expandedGroups.status.has(g)||(searchKey&&items.length>0);if(searchKey&&!items.length)return'';const count=items.length;const bodyHtml=items.length?items.map(r=>{const checked=pickedStatusIds.has(r.id);const chk=statusBatchMode?`<div class="card-check">${checked?'<i data-lucide="check"></i>':''}</div>`:'';return`<div class="tree-item ${statusBatchMode?'selecting':''}" data-status-id="${r.id}">${chk}<div class="cr-text">${esc(r.content)}</div>${statusBatchMode?'':`<button class="icon-btn sm" data-del-reply="${r.id}"><i data-lucide="trash-2"></i></button>`}</div>`;}).join(''):'<div class="tree-empty">该分组暂无内容</div>';return`<div class="tree-group ${open?'open':''}" data-group-name="${esc(g)}"><div class="tree-head"><i data-lucide="chevron-right" class="caret"></i><span class="gname">${esc(g)}</span>${isBlocked?'<span class="gblock">已屏蔽</span>':''}<span class="gcount">${count}</span></div><div class="tree-body">${bodyHtml}</div></div>`;}).join('');el.innerHTML=html||'<div class="tree-empty">没有匹配的内容</div>';icons();el.querySelectorAll('.tree-head').forEach(head=>{head.onclick=()=>{const group=head.parentElement.dataset.groupName;if(expandedGroups.status.has(group))expandedGroups.status.delete(group);else expandedGroups.status.add(group);head.parentElement.classList.toggle('open');};let lpTimer=null;head.addEventListener('pointerdown',()=>{lpTimer=setTimeout(()=>{lpTimer=null;const g=head.parentElement.dataset.groupName;const isBlocked=blocked.includes(g);showSheet([
-          {icon:'edit-3',label:'重命名分组',fn:()=>{showInputDialog({title:'重命名分组',placeholder:'输入新名称',defaultValue:g,onSave:async newName=>{if(!newName||newName===g)return;if(groupStore.status.includes(newName)){toast('该分组已存在');return;}const idx=groupStore.status.indexOf(g);if(idx>=0)groupStore.status[idx]=newName;else groupStore.status.push(newName);const pool=await getAll('replyPool');for(const r of pool){if(r.group===g){r.group=newName;await put('replyPool',r);}}if(settings.pools.status){settings.pools.status=settings.pools.status.map(x=>x===g?newName:x);await saveSettings();}if(expandedGroups.status.has(g)){expandedGroups.status.delete(g);expandedGroups.status.add(newName);}await saveGroups();renderCardPage();toast('已重命名');}});}},
-          {icon:'trash-2',label:`删除分组「${g}」（条目一并删除）`,danger:true,fn:async()=>{if(!confirm(`删除分组「${g}」？该分组下的条目将全部删除。`))return;groupStore.status=groupStore.status.filter(x=>x!==g);groupStore.blockedStatus=(groupStore.blockedStatus||[]).filter(x=>x!==g);const pool=await getAll('replyPool');for(const r of pool){if((r.group||'')===g)await delOne('replyPool',r.id);}await saveGroups();renderCardPage();}},
-          {icon:isBlocked?'eye':'eye-off',label:isBlocked?'取消屏蔽':'屏蔽该分组',fn:async()=>{const arr=groupStore.blockedStatus||[];if(arr.includes(g))groupStore.blockedStatus=arr.filter(x=>x!==g);else groupStore.blockedStatus=[...arr,g];await saveGroups();renderCardPage();}}
-        ]);},620);});const clearLp=()=>{if(lpTimer){clearTimeout(lpTimer);lpTimer=null;}};head.addEventListener('pointerup',clearLp);head.addEventListener('pointercancel',clearLp);head.addEventListener('pointerleave',clearLp);head.addEventListener('pointermove',clearLp);});el.querySelectorAll('[data-status-id]').forEach(item=>{item.onclick=()=>{if(!statusBatchMode)return;const id=Number(item.dataset.statusId);if(pickedStatusIds.has(id))pickedStatusIds.delete(id);else pickedStatusIds.add(id);renderStatusTree();};});updateStatusBatchBar();}
+async function renderCardsTree(){
+  const groups=await allCardGroups();const blocked=groupStore.blockedCard||[];const allCards=await getAll('cards');const searchKey=cardSearchKey;const el=$('#cardTree');
+  if(!groups.length){el.innerHTML='<div class="tree-empty">还没有分组</div>';return;}
+  const html=groups.map(g=>{
+    let items=allCards.filter(c=>(c.group||'默认')===g);
+    if(searchKey)items=items.filter(c=>(c.text||'').toLowerCase().includes(searchKey));
+    items.sort((a,b)=>b.timestamp-a.timestamp);
+    const isBlocked=blocked.includes(g);
+    const open=expandedGroups.card.has(g)||(searchKey&&items.length>0);
+    if(searchKey&&!items.length)return'';
+    const count=items.length;
+    const bodyHtml=items.length?items.map(c=>{const itemBlocked=!!c.blocked;const cls=`tree-item ${batchMode?'selecting':''} ${pickedCards.has(c.id)?'picked':''} ${itemBlocked?'blocked':''}`;const chk=batchMode?`<div class="card-check">${pickedCards.has(c.id)?'<i data-lucide="check"></i>':''}</div>`:'';const blockMark=itemBlocked?'<span class="block-mark">已屏蔽</span>':'';if(c.blob)return`<div class="${cls}" data-card="${c.id}">${chk}<img class="cr-thumb" src="${blobUrl(c.blob,'cd'+c.id)}" alt=""><div class="cr-text">图片字卡</div>${blockMark}</div>`;return`<div class="${cls}" data-card="${c.id}">${chk}<div class="cr-text">${esc(c.text||'')}</div>${blockMark}</div>`;}).join(''):'<div class="tree-empty">该分组暂无字卡</div>';
+    const menuBtn=batchMode?'':`<button class="icon-btn sm g-edit" data-card-group-menu="${esc(g)}" title="分组设置"><i data-lucide="pencil"></i></button>`;
+    return`<div class="tree-group ${open?'open':''}" data-group-name="${esc(g)}"><div class="tree-head"><i data-lucide="chevron-right" class="caret"></i><span class="gname">${esc(g)}</span>${isBlocked?'<span class="gblock">已屏蔽</span>':''}<span class="gcount">${count}</span>${menuBtn}</div><div class="tree-body">${bodyHtml}</div></div>`;
+  }).join('');
+  el.innerHTML=html||'<div class="tree-empty">没有匹配的字卡</div>';
+  icons();
+  el.querySelectorAll('.tree-group').forEach(grp=>{
+    const g=grp.dataset.groupName;const head=grp.querySelector('.tree-head');
+    head.onclick=e=>{
+      if(e.target.closest('.g-edit'))return;
+      if(head._suppress){head._suppress=false;return;}
+      if(expandedGroups.card.has(g))expandedGroups.card.delete(g);else expandedGroups.card.add(g);
+      grp.classList.toggle('open');
+    };
+    const gbtn=head.querySelector('.g-edit');
+    if(gbtn)gbtn.onclick=e=>{e.stopPropagation();openCardGroupMenu(g);};
+    let lpTimer=null;
+    head.addEventListener('pointerdown',e=>{if(e.target.closest('.g-edit'))return;lpTimer=setTimeout(()=>{lpTimer=null;head._suppress=true;openCardGroupMenu(g);},560);});
+    const clearLp=()=>{if(lpTimer){clearTimeout(lpTimer);lpTimer=null;}};
+    head.addEventListener('pointerup',clearLp);head.addEventListener('pointercancel',clearLp);head.addEventListener('pointerleave',clearLp);head.addEventListener('pointermove',clearLp);
+    head.addEventListener('contextmenu',e=>e.preventDefault());
+  });
+  el.querySelectorAll('[data-card]').forEach(item=>{
+    item.onclick=async e=>{
+      e.stopPropagation();
+      const id=Number(item.dataset.card);
+      if(batchMode){if(pickedCards.has(id))pickedCards.delete(id);else pickedCards.add(id);renderCardsTree();return;}
+      openCardItemMenu(await getOne('cards',id));
+    };
+  });
+  updateBatchBar();
+}
+async function renderStatusTree(){
+  const named=await allStatusGroups();
+  const blocked=groupStore.blockedStatus||[];
+  const allPool=await getAll('replyPool');
+  const searchKey=statusSearchKey;
+  const el=$('#statusTree');
+  const hasLoose=allPool.some(r=>!r.group);
+  const groups=hasLoose?['',...named]:named;
+  if(!groups.length){el.innerHTML='<div class="tree-empty">还没有分组</div>';return;}
+  const html=groups.map(g=>{
+    const isLoose=g==='';
+    let items=allPool.filter(r=>(r.group||'')===g);
+    if(searchKey)items=items.filter(r=>(r.content||'').toLowerCase().includes(searchKey));
+    items.sort((a,b)=>(b.id||0)-(a.id||0));
+    const isBlocked=!isLoose&&blocked.includes(g);
+    const open=expandedGroups.status.has(g)||(searchKey&&items.length>0);
+    if(searchKey&&!items.length)return'';
+    const count=items.length;
+    const bodyHtml=items.length?items.map(r=>{const checked=pickedStatusIds.has(r.id);const chk=statusBatchMode?`<div class="card-check">${checked?'<i data-lucide="check"></i>':''}</div>`:'';const del=statusBatchMode?'':`<button class="icon-btn sm" data-del-reply="${r.id}"><i data-lucide="trash-2"></i></button>`;return`<div class="tree-item ${statusBatchMode?'selecting':''}" data-status-id="${r.id}">${chk}<div class="cr-text">${esc(r.content)}</div>${del}</div>`;}).join(''):'<div class="tree-empty">该分组暂无内容</div>';
+    const menuBtn=statusBatchMode?'':`<button class="icon-btn sm g-edit" data-status-group-menu="${esc(g)}" title="分组设置"><i data-lucide="pencil"></i></button>`;
+    return`<div class="tree-group ${open?'open':''}" data-group-name="${esc(g)}"><div class="tree-head"><i data-lucide="chevron-right" class="caret"></i><span class="gname">${esc(isLoose?'未分组':g)}</span>${isBlocked?'<span class="gblock">已屏蔽</span>':''}<span class="gcount">${count}</span>${menuBtn}</div><div class="tree-body">${bodyHtml}</div></div>`;
+  }).join('');
+  el.innerHTML=html||'<div class="tree-empty">没有匹配的内容</div>';
+  icons();
+  el.querySelectorAll('.tree-group').forEach(grp=>{
+    const g=grp.dataset.groupName;const head=grp.querySelector('.tree-head');
+    head.onclick=e=>{
+      if(e.target.closest('.g-edit'))return;
+      if(head._suppress){head._suppress=false;return;}
+      if(expandedGroups.status.has(g))expandedGroups.status.delete(g);else expandedGroups.status.add(g);
+      grp.classList.toggle('open');
+    };
+    const gbtn=head.querySelector('.g-edit');
+    if(gbtn)gbtn.onclick=e=>{e.stopPropagation();openStatusGroupMenu(g);};
+    let lpTimer=null;
+    head.addEventListener('pointerdown',e=>{if(e.target.closest('.g-edit'))return;lpTimer=setTimeout(()=>{lpTimer=null;head._suppress=true;openStatusGroupMenu(g);},560);});
+    const clearLp=()=>{if(lpTimer){clearTimeout(lpTimer);lpTimer=null;}};
+    head.addEventListener('pointerup',clearLp);head.addEventListener('pointercancel',clearLp);head.addEventListener('pointerleave',clearLp);head.addEventListener('pointermove',clearLp);
+    head.addEventListener('contextmenu',e=>e.preventDefault());
+  });
+  el.querySelectorAll('[data-status-id]').forEach(item=>{
+    item.onclick=async e=>{
+      if(e.target.closest('[data-del-reply]'))return;
+      const id=Number(item.dataset.statusId);
+      if(statusBatchMode){if(pickedStatusIds.has(id))pickedStatusIds.delete(id);else pickedStatusIds.add(id);renderStatusTree();return;}
+      openStatusItemMenu(id);
+    };
+  });
+  updateStatusBatchBar();
+}
+async function openCardItemMenu(c){
+  if(!c)return;
+  showSheet([
+    {icon:'edit-3',label:'修改内容',fn:()=>{showInputDialog({title:'修改字卡内容',placeholder:'输入新内容',defaultValue:c.text||'',maxLength:200,onSave:async v=>{if(!v)return;c.text=v;c.timestamp=c.timestamp||Date.now();await put('cards',c);renderCardPage();toast('已保存');}});}},
+    {icon:'folder',label:'移动到分组…',fn:()=>moveCardTo(c)},
+    {icon:'send',label:'发送到聊天',fn:()=>sendCard(c)},
+    {icon:c.blocked?'eye':'eye-off',label:c.blocked?'取消屏蔽':'屏蔽',fn:async()=>{c.blocked=!c.blocked;await put('cards',c);renderCardsTree();}},
+    {icon:'copy',label:'复制文字',fn:()=>{if(c.text){navigator.clipboard?.writeText(c.text);toast('已复制');}}},
+    {icon:'trash-2',label:'删除',danger:true,fn:async()=>{await delOne('cards',c.id);renderCardPage();}}
+  ]);
+}
+async function openCardGroupMenu(g){
+  const blocked=groupStore.blockedCard||[];
+  const isBlocked=blocked.includes(g);
+  showSheet([
+    {icon:'edit-3',label:'重命名分组',fn:()=>{showInputDialog({title:'重命名分组',placeholder:'输入新名称',defaultValue:g,onSave:async newName=>{if(!newName||newName===g)return;if(groupStore.card.includes(newName)){toast('该分组已存在');return;}const idx=groupStore.card.indexOf(g);if(idx>=0)groupStore.card[idx]=newName;else groupStore.card.push(newName);const cards=await getAll('cards');for(const c of cards){if((c.group||'默认')===g){c.group=newName;await put('cards',c);}}if(expandedGroups.card.has(g)){expandedGroups.card.delete(g);expandedGroups.card.add(newName);}await saveGroups();renderCardPage();toast('已重命名');}});}},
+    {icon:'trash-2',label:`删除分组「${g}」（字卡归入默认）`,danger:true,fn:async()=>{if(!confirm(`删除分组「${g}」？字卡将归入默认分组。`))return;groupStore.card=groupStore.card.filter(x=>x!==g);groupStore.blockedCard=(groupStore.blockedCard||[]).filter(x=>x!==g);const cards=await getAll('cards');for(const c of cards){if((c.group||'默认')===g){c.group='默认';await put('cards',c);}}await saveGroups();renderCardPage();}},
+    {icon:isBlocked?'eye':'eye-off',label:isBlocked?'取消屏蔽':'屏蔽该分组',fn:async()=>{const arr=groupStore.blockedCard||[];if(arr.includes(g))groupStore.blockedCard=arr.filter(x=>x!==g);else groupStore.blockedCard=[...arr,g];await saveGroups();renderCardPage();}}
+  ]);
+}
+async function openStatusItemMenu(id){
+  const r=await getOne('replyPool',id);
+  if(!r)return;
+  showSheet([
+    {icon:'edit-3',label:'修改内容',fn:()=>{showInputDialog({title:'修改内容',placeholder:'输入新内容',defaultValue:r.content||'',maxLength:200,onSave:async v=>{if(!v)return;r.content=v;await put('replyPool',r);renderStatusTree();toast('已保存');}});}},
+    {icon:'folder',label:'移动到分组…',fn:()=>moveStatusTo(r)},
+    {icon:'send',label:'发送到聊天',fn:()=>sendStatusItem(r)},
+    {icon:'copy',label:'复制文字',fn:async()=>{toast((await copyText(r.content||''))?'已复制':'复制失败');}},
+    {icon:'trash-2',label:'删除',danger:true,fn:async()=>{await delOne('replyPool',id);renderStatusTree();}}
+  ]);
+}
+async function openStatusGroupMenu(g){
+  const isLoose=g==='';
+  const blocked=groupStore.blockedStatus||[];
+  const isBlocked=!isLoose&&blocked.includes(g);
+  const items=[];
+  items.push({icon:'edit-3',label:isLoose?'归入新分组…':'重命名分组',fn:()=>{showInputDialog({title:isLoose?'新分组名称':'重命名分组',placeholder:'输入新名称',defaultValue:isLoose?'':g,onSave:async newName=>{
+    if(!newName||newName===g)return;
+    if(groupStore.status.includes(newName)){toast('该分组已存在');return;}
+    if(isLoose){
+      groupStore.status.push(newName);
+      const pool=await getAll('replyPool');
+      for(const r of pool){if(!r.group){r.group=newName;await put('replyPool',r);}}
+      expandedGroups.status.add(newName);
+    }else{
+      const idx=groupStore.status.indexOf(g);
+      if(idx>=0)groupStore.status[idx]=newName;else groupStore.status.push(newName);
+      const pool=await getAll('replyPool');
+      for(const r of pool){if(r.group===g){r.group=newName;await put('replyPool',r);}}
+      if(settings.pools&&settings.pools.status){settings.pools.status=settings.pools.status.map(x=>x===g?newName:x);await saveSettings();}
+      if(expandedGroups.status.has(g)){expandedGroups.status.delete(g);expandedGroups.status.add(newName);}
+    }
+    await saveGroups();renderCardPage();toast('已重命名');
+  }});}});
+  if(!isLoose){
+    items.push({icon:'trash-2',label:`删除分组「${g}」（条目一并删除）`,danger:true,fn:async()=>{if(!confirm(`删除分组「${g}」？该分组下的条目将全部删除。`))return;groupStore.status=groupStore.status.filter(x=>x!==g);groupStore.blockedStatus=(groupStore.blockedStatus||[]).filter(x=>x!==g);const pool=await getAll('replyPool');for(const r of pool){if((r.group||'')===g)await delOne('replyPool',r.id);}await saveGroups();renderCardPage();}});
+    items.push({icon:isBlocked?'eye':'eye-off',label:isBlocked?'取消屏蔽':'屏蔽该分组',fn:async()=>{const arr=groupStore.blockedStatus||[];if(arr.includes(g))groupStore.blockedStatus=arr.filter(x=>x!==g);else groupStore.blockedStatus=[...arr,g];await saveGroups();renderCardPage();}});
+  }
+  showSheet(items);
+}
+async function moveStatusTo(r){
+  const groups=await allStatusGroups();
+  const items=groups.map(g=>({icon:'folder',label:g,fn:async()=>{r.group=g;await put('replyPool',r);renderStatusTree();}}));
+  items.push({icon:'plus',label:'新建分组…',fn:async()=>{showInputDialog({title:'新分组名称',placeholder:'输入分组名称',onSave:async name=>{if(!name)return;if(!groupStore.status.includes(name)){groupStore.status.push(name);await saveGroups();}r.group=name;await put('replyPool',r);renderStatusTree();}});}});
+  if(r.group)items.push({icon:'minus',label:'移出分组（未分组）',fn:async()=>{r.group='';await put('replyPool',r);renderStatusTree();}});
+  showSheet(items);
+}
+async function sendStatusItem(r){
+  if(!r)return;
+  await add('messages',{sender:'me',type:'text',content:r.content||'',timestamp:Date.now()});
+  toast('已发送');
+  switchPage('chat');
+  markReadAndReply(null);
+}
 async function moveCardTo(c){const groups=await allCardGroups();const items=groups.map(g=>({icon:'folder',label:g,fn:async()=>{c.group=g;await put('cards',c);renderCardPage();}}));items.push({icon:'plus',label:'新建分组…',fn:async()=>{showInputDialog({title:'新分组名称',placeholder:'输入分组名称',onSave:async name=>{if(!name)return;if(!groupStore.card.includes(name)){groupStore.card.push(name);await saveGroups();}c.group=name;await put('cards',c);renderCardPage();}});}});showSheet(items);}
 async function sendCard(c){if(!c)return;if(c.blob)await add('messages',{sender:'me',type:'sticker',blob:c.blob,timestamp:Date.now()});else await add('messages',{sender:'me',type:'text',content:c.text,timestamp:Date.now()});toast('已发送');switchPage('chat');markReadAndReply(null);}
 function updateBatchBar(){let bar=$('#batchBar');if(!batchMode){if(bar)bar.remove();return;}if(!bar){bar=document.createElement('div');bar.className='batch-bar';bar.id='batchBar';bar.innerHTML=`<span style="font-size:12.5px;color:#8e8e96" id="batchCount">已选 0 项</span><div class="spacer"></div><button class="btn ghost sm" id="batchAll">全选</button><button class="btn ghost sm" id="batchBlock">屏蔽</button><button class="btn ghost sm" id="batchMove">移动</button><button class="btn danger sm" id="batchDelete">删除</button><button class="btn sm" id="batchExit">完成</button>`;$('main').appendChild(bar);icons();$('#batchExit',bar).onclick=()=>{batchMode=false;pickedCards.clear();renderCardPage();};$('#batchAll',bar).onclick=async()=>{const all=(await getAll('cards')).map(c=>c.id);if(pickedCards.size===all.length)pickedCards.clear();else all.forEach(id=>pickedCards.add(id));renderCardsTree();};$('#batchDelete',bar).onclick=async()=>{if(!pickedCards.size){toast('请先选择');return;}if(!confirm(`删除选中的 ${pickedCards.size} 张？`))return;for(const id of pickedCards)await delOne('cards',id);pickedCards.clear();renderCardPage();toast('已删除');};$('#batchBlock',bar).onclick=async()=>{if(!pickedCards.size){toast('请先选择');return;}const cards=[];for(const id of pickedCards){const c=await getOne('cards',id);if(c)cards.push(c);}const allBlocked=cards.every(c=>c.blocked);for(const c of cards){c.blocked=!allBlocked;await put('cards',c);}pickedCards.clear();renderCardPage();};$('#batchMove',bar).onclick=async()=>{if(!pickedCards.size){toast('请先选择');return;}const groups=await allCardGroups();const items=groups.map(g=>({icon:'folder',label:g,fn:async()=>{for(const id of pickedCards){const c=await getOne('cards',id);if(c){c.group=g;await put('cards',c);}}pickedCards.clear();renderCardPage();}}));showSheet(items);};}const cnt=$('#batchCount');if(cnt)cnt.textContent=`已选 ${pickedCards.size} 项`;const allBtn=$('#batchAll');if(allBtn)getAll('cards').then(all=>{allBtn.textContent=(pickedCards.size===all.length&&all.length)?'取消全选':'全选';});}
