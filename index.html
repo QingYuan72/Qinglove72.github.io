@@ -366,12 +366,13 @@ select{appearance:none;background-image:url("data:image/svg+xml;utf8,<svg xmlns=
 .listen-time{font-size:12.5px;color:#9a9aa2;margin-top:16px;letter-spacing:.08em}
 .listen-song-title{font-size:19px;font-weight:500;margin-top:22px;text-align:center;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:0 10px}
 .listen-song-artist{font-size:13px;color:#9a9aa2;margin-top:5px;text-align:center;padding:0 10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
-.listen-controls{display:flex;align-items:center;gap:30px;margin-top:28px}
-.listen-controls button{width:54px;height:54px;border-radius:50%;display:grid;place-items:center;color:var(--text)}
+.listen-controls{display:flex;align-items:center;justify-content:center;gap:12px;margin-top:28px}
+.listen-controls button{width:44px;height:44px;border-radius:50%;display:grid;place-items:center;color:var(--text);flex:0 0 auto}
 .listen-controls button:active{background:rgba(0,0,0,.05)}
-.listen-controls button svg{width:26px;height:26px}
-.listen-play{background:var(--accent)!important;color:var(--accent-ink)!important}
+.listen-controls button svg{width:21px;height:21px}
+.listen-play{width:54px!important;height:54px!important;background:var(--accent)!important;color:var(--accent-ink)!important}
 .listen-play svg{width:22px!important;height:22px!important}
+.listen-controls button.on{background:rgba(0,0,0,.08)}
 .listen-songs{width:100%;margin-top:26px;max-height:260px;overflow-y:auto;border-radius:14px;background:rgba(0,0,0,.025)}
 .listen-song{display:flex;align-items:center;gap:10px;padding:11px 14px;font-size:13px;cursor:pointer;border-bottom:1px solid rgba(0,0,0,.04)}
 .listen-song:last-child{border-bottom:none}
@@ -607,7 +608,7 @@ body.bs-note .bubble:not(.sticker){border-radius:3px;box-shadow:2px 3px 0 rgba(0
           <div class="listen-time" id="listenTime">一起听了 0小时0分钟</div>
           <div class="listen-song-title" id="lsTitle">还没有歌曲</div>
           <div class="listen-song-artist" id="lsArtist">点击下方添加</div>
-          <div class="listen-controls"><button id="lsPrevFull"><i data-lucide="skip-back"></i></button><button class="listen-play" id="lsPlayFull"><i data-lucide="play"></i></button><button id="lsNextFull"><i data-lucide="skip-forward"></i></button></div>
+          <div class="listen-controls"><button id="lsListBtn" title="播放列表"><i data-lucide="list-music"></i></button><button id="lsPrevFull" title="上一首"><i data-lucide="skip-back"></i></button><button class="listen-play" id="lsPlayFull"><i data-lucide="play"></i></button><button id="lsNextFull" title="下一首"><i data-lucide="skip-forward"></i></button><button id="lsModeBtn" title="播放模式"><i data-lucide="repeat"></i></button></div>
           <div class="listen-songs" id="listenList"></div>
           <div class="listen-actions"><button class="btn" id="lsAddFull"><i data-lucide="link"></i>链接添加</button><button class="btn ghost" id="lsFileAdd"><i data-lucide="upload"></i>文件导入</button></div>
         </div>
@@ -1329,9 +1330,9 @@ function surveyInputTitle(ev){if(!surveyEditor)return;if(ev.target.id==='sveTitl
 /* ============================================================
    一起听
    ============================================================ */
-const listenState={songs:[],idx:-1,playing:false,open:false,el:null,bubbleEl:null};
+const listenState={songs:[],idx:-1,playing:false,open:false,el:null,bubbleEl:null,playMode:(typeof localStorage!=='undefined'&&localStorage.getItem('listenPlayMode'))||'order',listOpen:false};
 let audioEl=null,listenSwitchTimer=null,listenTickTimer=null;
-function ensureAudio(){if(!audioEl){audioEl=new Audio();audioEl.addEventListener('ended',()=>listenNext(true));audioEl.addEventListener('error',()=>{if(listenState.playing)listenNext(true);});}return audioEl;}
+function ensureAudio(){if(!audioEl){audioEl=new Audio();audioEl.addEventListener('ended',()=>listenNext(true)); audioEl.addEventListener('error',()=>{if(!listenState.playing)return;if(listenState.songs.length>1){listenState.idx=(listenState.idx+1)%listenState.songs.length;playCurrent();}else{listenState.playing=false;renderListenPage();}});}return audioEl;}
 async function loadSongs(){const rows=await getAll('songs');listenState.songs=rows.sort((a,b)=>(a.timestamp||0)-(b.timestamp||0));}
 async function saveSong(song){const id=await add('songs',song);song.id=id;return id;}
 function currentSong(){return listenState.songs[listenState.idx]||null;}
@@ -1341,9 +1342,9 @@ function updateListenTime(){const el=document.getElementById('listenTime');if(el
 function startListenTick(){if(listenTickTimer)clearInterval(listenTickTimer);listenTickTimer=setInterval(()=>{if(listenState.playing){meta.listenSeconds=(meta.listenSeconds||0)+1;updateListenTime();if(meta.listenSeconds%15===0)saveMeta();}},1000);}
 function playCurrent(){const s=currentSong();if(!s){renderListenPage();return;}const a=ensureAudio();const src=songSrc(s);if(a.src!==src)a.src=src;const p=a.play();if(p&&p.catch)p.catch(()=>{});listenState.playing=true;renderListenPage();}
 function listenToggle(){const s=currentSong();if(!s){addSongDialog();return;}const a=ensureAudio();if(listenState.playing){a.pause();listenState.playing=false;}else{const src=songSrc(s);if(a.src!==src)a.src=src;a.play().catch(()=>{});listenState.playing=true;}renderListenPage();}
-function listenNext(){if(!listenState.songs.length)return;listenState.idx=(listenState.idx+1)%listenState.songs.length;playCurrent();}
-function listenPrev(){if(!listenState.songs.length)return;listenState.idx=(listenState.idx-1+listenState.songs.length)%listenState.songs.length;playCurrent();}
-function renderListenPage(){const t=$('#lsTitle');if(!t)return;const s=currentSong();t.textContent=s?(s.title||'未知歌曲'):'还没有歌曲';$('#lsArtist').textContent=s?(s.artist||'未知歌手'):'点击下方添加';$('#lsPlayFull').innerHTML=`<i data-lucide="${listenState.playing?'pause':'play'}"></i>`;$('#lfAv1').src=profile.me.avatar;$('#lfAv2').src=profile.other.avatar;updateListenTime();const list=$('#listenList');if(!listenState.songs.length){list.innerHTML='<div class="empty" style="padding:20px 0">还没有歌曲，点下方添加吧</div>';}else{list.innerHTML=listenState.songs.map((x,i)=>`<div class="listen-song ${i===listenState.idx?'cur':''}" data-song="${i}"><b>${esc(x.title||'未知')}</b>${x.blob?'<span class="ls-tag">本地</span>':''}<span class="ls-a">${esc(x.artist||'')}</span><button class="icon-btn sm ls-edit" data-edit-song="${x.id}" title="编辑"><i data-lucide="pencil"></i></button><button class="icon-btn sm ls-del" data-del-song="${x.id}" title="删除"><i data-lucide="x"></i></button></div>`).join('');}icons();list.querySelectorAll('[data-song]').forEach(row=>{row.onclick=e=>{if(e.target.closest('[data-del-song]'))return;if(e.target.closest('[data-edit-song]'))return;listenState.idx=Number(row.dataset.song);playCurrent();};});
+function listenNext(auto){if(!listenState.songs.length)return;const mode=listenState.playMode||'order';if(mode==='single'&&auto){const a=ensureAudio();try{a.currentTime=0;}catch(e){}const p=a.play();if(p&&p.catch)p.catch(()=>{});listenState.playing=true;renderListenPage();return;}if(mode==='shuffle'&&listenState.songs.length>1){let ni;do{ni=Math.floor(Math.random()*listenState.songs.length);}while(ni===listenState.idx);listenState.idx=ni;playCurrent();return;}listenState.idx=(listenState.idx+1)%listenState.songs.length;playCurrent();}
+function listenPrev(){if(!listenState.songs.length)return;if((listenState.playMode||'order')==='shuffle'&&listenState.songs.length>1){let ni;do{ni=Math.floor(Math.random()*listenState.songs.length);}while(ni===listenState.idx);listenState.idx=ni;}else{listenState.idx=(listenState.idx-1+listenState.songs.length)%listenState.songs.length;}playCurrent();}
+function renderListenPage(){const t=$('#lsTitle');if(!t)return;const s=currentSong();t.textContent=s?(s.title||'未知歌曲'):'还没有歌曲';$('#lsArtist').textContent=s?(s.artist||'未知歌手'):'点击下方添加'; $('#lsPlayFull').innerHTML=`<i data-lucide="${listenState.playing?'pause':'play'}"></i>`;const _mi={order:'repeat',single:'repeat-1',shuffle:'shuffle'};const _mt={order:'顺序播放',single:'单曲循环',shuffle:'随机播放'};const _cm=listenState.playMode||'order';const _mb=$('#lsModeBtn');if(_mb){_mb.innerHTML=`<i data-lucide="${_mi[_cm]||'repeat'}"></i>`;_mb.title=_mt[_cm]||'顺序播放';}$('#lfAv1').src=profile.me.avatar;$('#lfAv2').src=profile.other.avatar;updateListenTime();const list=$('#listenList');list.style.display=listenState.listOpen?'block':'none';const _lb=$('#lsListBtn');if(_lb)_lb.classList.toggle('on',listenState.listOpen);if(!listenState.songs.length){list.innerHTML='<div class="empty" style="padding:20px 0">还没有歌曲，点下方添加吧</div>';}else{list.innerHTML=listenState.songs.map((x,i)=>`<div class="listen-song ${i===listenState.idx?'cur':''}" data-song="${i}"><b>${esc(x.title||'未知')}</b>${x.blob?'<span class="ls-tag">本地</span>':''}<span class="ls-a">${esc(x.artist||'')}</span><button class="icon-btn sm ls-edit" data-edit-song="${x.id}" title="编辑"><i data-lucide="pencil"></i></button><button class="icon-btn sm ls-del" data-del-song="${x.id}" title="删除"><i data-lucide="x"></i></button></div>`).join('');}icons();list.querySelectorAll('[data-song]').forEach(row=>{row.onclick=e=>{if(e.target.closest('[data-del-song]'))return;if(e.target.closest('[data-edit-song]'))return;listenState.idx=Number(row.dataset.song);playCurrent();};});
 // 编辑歌曲（歌名 + 歌手）
 list.querySelectorAll('[data-edit-song]').forEach(b=>{b.onclick=async e=>{e.stopPropagation();const id=Number(b.dataset.editSong);const s=await getOne('songs',id);if(!s)return;const mask=document.createElement('div');mask.className='sheet-mask';mask.style.alignItems='center';mask.style.padding='24px';mask.innerHTML=`<div class="dialog"><div class="dialog-title">编辑歌曲</div><input class="dialog-input" id="editTitle" placeholder="歌曲名" value="${esc(s.title||'')}" style="margin-bottom:10px"><input class="dialog-input" id="editArtist" placeholder="歌手" value="${esc(s.artist||'')}" style="margin-bottom:10px"><div class="row" style="margin-top:8px;gap:10px"><button class="btn ghost sm" style="flex:1" id="editCancel">取消</button><button class="btn sm" style="flex:1" id="editOk">保存</button></div></div>`;mask.addEventListener('click',ev=>{if(ev.target===mask)mask.remove();});document.body.appendChild(mask);icons();$('#editCancel',mask).onclick=()=>mask.remove();$('#editOk',mask).onclick=async()=>{
   const title=$('#editTitle',mask).value.trim()||'未命名';
@@ -1465,7 +1466,7 @@ function bindUI(){
   $('#listenCloseBtn').onclick=()=>{if(audioEl)audioEl.pause();listenState.playing=false;removeListenBubble();listenState.open=false;switchPage('chat');};
   $('#lsPlayFull').onclick=listenToggle;
   $('#lsPrevFull').onclick=listenPrev;
-  $('#lsNextFull').onclick=()=>listenNext();
+  $('#lsNextFull').onclick=()=>listenNext();$('#lsListBtn').onclick=()=>{listenState.listOpen=!listenState.listOpen;renderListenPage();};$('#lsModeBtn').onclick=()=>{const order=['order','single','shuffle'];const cur=listenState.playMode||'order';const next=order[(order.indexOf(cur)+1)%order.length];listenState.playMode=next;try{localStorage.setItem('listenPlayMode',next);}catch(e){}renderListenPage();toast({order:'顺序播放',single:'单曲循环',shuffle:'随机播放'}[next]);};
   $('#lsAddFull').onclick=addSongDialog;
   $('#lsFileAdd').onclick=()=>$('#songFileInput').click();
   $('#songFileInput').onchange=async e=>{const files=Array.from(e.target.files||[]);await importSongFiles(files);e.target.value='';};
